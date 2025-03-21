@@ -101,6 +101,15 @@
 ---
 
 ## <a id="technologies"></a>🚀 활용 기술
+| 분류  | 활용 기술 |
+| ----- | -------- |
+| **가상화**   | <img src="https://img.shields.io/badge/VirtualBox-183A61?style=flat-square&logo=virtualbox&logoColor=white" alt="VirtualBox" />  |
+| **컨테이너**  | <img src="https://img.shields.io/badge/Docker-2496ED?style=flat-square&logo=docker&logoColor=white" alt="Docker" /> <img src="https://img.shields.io/badge/Docker%20Compose-009CE6?style=flat-square&logo=docker-compose&logoColor=white" alt="Docker Compose" /> <img src="https://img.shields.io/badge/ui--for--docker-FF9900?style=flat-square&logo=docker&logoColor=white" alt="ui-for-docker" /> |
+| **백엔드**  | <img src="https://img.shields.io/badge/Spring%20Boot-6DB33F?style=flat-square&logo=spring-boot&logoColor=white" alt="Spring Boot" /> <img src="https://img.shields.io/badge/Java-007396?style=flat-square&logo=java&logoColor=white" alt="Java" />  |
+| **데이터베이스**   | <img src="https://img.shields.io/badge/MySQL-4479A1?style=flat-square&logo=mysql&logoColor=white" alt="MySQL" />  |
+| **데이터베이스 도구**  | <img src="https://img.shields.io/badge/DBeaver-003087?style=flat-square&logo=dbeaver&logoColor=white" alt="DBeaver" />  |
+| **스크립팅 & 자동화**  | <img src="https://img.shields.io/badge/Bash-4EAA25?style=flat-square&logo=gnu-bash&logoColor=white" alt="Bash" /> <img src="https://img.shields.io/badge/Cron-000000?style=flat-square&logo=cron&logoColor=white" alt="Cron" />  |
+
 
 ---
 
