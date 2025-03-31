@@ -116,8 +116,201 @@
 ## <a id="implementation"></a>🏗️⚙️ 구현 및 실행
 
 ### <a id="directory-structure"></a>파일 및 디렉토리 구조 📁
+.<br>
+├── backup<br>
+│   &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├── dani_backup_YYYY-MM-DD_HH-MM-SS.sql           <br>
+│   &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└── ...                                           <br>
+├── backup.log                                 <br>
+├── backup.sh                                <br>
+├── docker-compose.yml                        <br>
+├── Dockerfile                                <br>
+├── .env                                      <br>
+├── run.sh                                    <br>
+└── springapp.jar                             <br>
+
+- **backup/**: 데이터베이스 백업 파일들이 저장되는 디렉토리
+- **dani_backup_YYYY-MM-DD_HH-MM-SS.sql**: 주기적인 백업 파일
+- **backup.log**: 백업 작업 로그 파일
+- **backup.sh**: MySQL 컨테이너 내부에서 `mysqldump`를 이용해 데이터를 백업하는 스크립트
+- **docker-compose.yml**: Spring Boot 애플리케이션과 MySQL 데이터베이스 컨테이너를 정의하고, 네트워크, 볼륨, 의존성(헬스 체크 포함)을 설정하여 컨테이너 구성 정의
+- **Dockerfile**: OpenJDK 17-slim 이미지를 기반으로 Spring Boot 애플리케이션을 실행할 수 있는 컨테이너 이미지 빌드 설정
+- **.env**: 데이터베이스 연결 정보, 서버 포트 등 주요 설정을 중앙에서 관리하여 여러 환경에서 재사용이 가능하도록 하는 데이터베이스 및 서버 관련 환경 변수 설정 파일 
+- **run.sh**: Docker 및 Docker Compose 설치 여부를 확인하고, 기존 컨테이너를 정리한 후 새로운 컨테이너를 빌드 및 실행하는 스크립트
+- **springapp.jar**: Dockerfile에 의해 컨테이너 이미지에 포함되는 Spring Boot로 작성된 애플리케이션의 실행 파일
+
 
 ### <a id="config-and-scripts"></a>구성 파일 및 스크립트 설명 📝
+- > **Dockerfile** <br>
+  OpenJDK 17-slim 이미지를 기반으로 하며, 애플리케이션 JAR 파일 복사, 필수 패키지 설치(curl 등), 포트 노출, 헬스 체크 설정 및 실행 명령어를 포함하여 컨테이너 이미지를 생성합니다.
+  ```
+  # Base Image 설정
+  FROM openjdk:17-slim
+
+  # curl 설치 (slim 이미지에는 기본적으로 없음)
+  RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
+
+  # 작업 디렉토리 설정
+  WORKDIR /app
+
+  # 애플리케이션 JAR 파일 복사
+  COPY springapp.jar app.jar
+
+  # 환경 변수에 설정된 포트 노출 (기본값: 8080)
+  EXPOSE ${SERVER_PORT}
+
+  # 헬스 체크 (애플리케이션 정상 여부 확인)
+  HEALTHCHECK --interval=10s --timeout=30s --retries=3 CMD curl -f http://localhost:${SERVER_PORT}/check || exit 1
+
+  # 애플리케이션 실행
+  ENTRYPOINT ["java", "-jar", "app.jar"]
+  ```
+  <br><br>
+- > **docker-compose.yml** <br>
+  > - 두 개의 주요 서비스(app과 DB)를 정의합니다. <br>
+  >   - **db (MySQL 데이터베이스)** <br>
+  MySQL 8.0 이미지를 사용하며, 환경변수를 통해 데이터베이스 초기 설정을 진행합니다. 또한 데이터의 영속성을 위해 볼륨을 사용하고, 헬스체크 기능으로 데이터베이스 상태를 확인합니다.
+  >   - **app (Spring Boot 애플리케이션)** <br>
+  Dockerfile을 기반으로 이미지를 빌드하며, 환경변수를 통해 MySQL 데이터베이스와의 연결 설정을 합니다. db 서비스의 헬스체크 결과를 확인한 후에 실행됩니다.
+  >
+  > - MySQL 데이터의 지속성을 위해 mysql_data 볼륨을 사용합니다. 이 볼륨은 컨테이너 내의 /var/lib/mysql 경로에 매핑되어 데이터 손실 없이 관리할 수 있습니다. 추가로, 호스트의 ./backup 디렉토리를 컨테이너의 /backup 디렉토리에 매핑하여 데이터 백업을 지원합니다.
+  >
+  > - 두 서비스가 동일한 네트워크(spring-mysql-net)를 공유하여 내부적으로 서로 통신할 수 있도록 설정합니다.
+  ```
+  version: "1.0"
+
+  services:
+    db:
+      container_name: mysqldb
+      image: mysql:8.0
+      restart: always
+      ports:
+        - "3306:3306"
+      environment:
+        MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+        MYSQL_DATABASE: ${MYSQL_DATABASE}
+        MYSQL_USER: ${MYSQL_USER}
+        MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      volumes:
+        - mysql_data:/var/lib/mysql
+        - ./backup:/backup
+      networks:
+        - spring-mysql-net
+      healthcheck:
+        test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root --password=${MYSQL_ROOT_PASSWORD} || exit 1"]
+        interval: 10s
+        timeout: 2s
+        retries: 5
+
+    app:
+      container_name: springbootapp
+      build:
+        context: .
+        dockerfile: Dockerfile
+      restart: always
+      ports:
+        - "${SERVER_PORT}:${SERVER_PORT}"
+      environment:
+        SERVER_PORT: ${SERVER_PORT}
+        MYSQL_HOST: db
+        MYSQL_PORT: 3306
+        MYSQL_DATABASE: ${MYSQL_DATABASE}
+        MYSQL_USER: ${MYSQL_USER}
+        MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      depends_on:
+        db:
+          condition: service_healthy
+      networks:
+        - spring-mysql-net
+
+  volumes:
+    mysql_data:
+
+  networks:
+    spring-mysql-net:
+      driver: bridge
+
+  ```
+  <br><br>
+- > **.env**  
+  데이터베이스 연결 정보(MYSQL_ROOT_PASSWORD, MYSQL_DATABASE, MYSQL_USER, MYSQL_PASSWORD)와 서버 포트(SERVER_PORT) 등 환경 설정을 중앙에서 관리하여, 여러 환경(로컬 개발, 테스트, 운영)에서 동일한 구성을 재사용하고 쉽게 변경할 수 있도록 합니다.
+  ```
+  MYSQL_ROOT_PASSWORD=root
+  MYSQL_DATABASE=dani
+  MYSQL_USER=user01
+  MYSQL_PASSWORD=user01
+  SERVER_PORT=8080
+  ```
+  <br><br>
+- > **backup.sh**  
+  지정된 경로의 .env 파일을 로드하고, MySQL 컨테이너에서 `mysqldump`를 실행하여 데이터베이스 백업 파일을 생성합니다. 백업 파일은 backup 디렉토리에 저장됩니다.
+  ```
+  #!/bin/bash
+
+  # 프로젝트의 절대 경로 (예: /home/user/my-spring-app)
+  BASE_DIR="/home/ubuntu/dani-spring-app"
+
+  # .env 파일 로드
+  if [ -f "${BASE_DIR}/.env" ]; then
+    set -o allexport
+    source "${BASE_DIR}/.env"
+    set +o allexport
+  else
+    echo "ERROR: ${BASE_DIR}/.env 파일을 찾을 수 없습니다."
+    exit 1
+  fi
+
+  # 백업 저장 디렉토리 지정 (절대 경로 사용 권장)
+  BACKUP_DIR="${BASE_DIR}/backup"
+  mkdir -p "${BACKUP_DIR}"
+
+  # 타임스탬프 생성 (파일명에 사용)
+  TIMESTAMP=$(date +"%F_%H-%M-%S")
+
+  # MySQL 컨테이너에서 mysqldump 실행 후 백업 파일 생성
+  docker exec mysqldb mysqldump -u root -p"${MYSQL_ROOT_PASSWORD}" ${MYSQL_DATABASE} > "${BACKUP_DIR}/dani_backup_${TIMESTAMP}.sql"
+
+  echo "Backup completed: ${BACKUP_DIR}/dani_backup_${TIMESTAMP}.sql"
+  ```
+  <br><br>
+- **run.sh**  
+  사전 요구사항(도커 및 도커 컴포즈 설치 여부)을 확인한 후, 기존 컨테이너를 종료하고 새로운 컨테이너를 빌드 및 실행하는 스크립트입니다. 필요한 Docker 환경을 자동으로 확인 및 구성하여 컨테이너를 실행할 수 있습니다.
+  ```
+  #!/bin/bash
+  # run.sh
+  set -euo pipefail
+
+  echo "Prerequisite 체크 중..."
+
+  # Docker 설치 확인
+  if ! command -v docker &> /dev/null; then
+    echo "ERROR: Docker가 설치되어 있지 않습니다. Docker를 설치 후 다시 시도하세요."
+    exit 1
+  fi
+
+  # Docker Compose 설치 확인
+  if ! command -v docker-compose &> /dev/null; then
+    echo "ERROR: Docker Compose가 설치되어 있지 않습니다. Docker Compose를 설치 후 다시 시도하세요."
+    exit 1
+  fi
+
+  # .env 파일 로드 (존재하면)
+  if [ -f .env ]; then
+    echo ".env 파일 로딩 중..."
+    set -o allexport
+    source .env
+    set +o allexport
+  else
+    echo "WARNING: .env 파일이 존재하지 않습니다. 기본값으로 진행합니다."
+  fi
+
+  echo "기존 컨테이너 정리 중..."
+  docker-compose down
+
+  echo "이미지 빌드 및 컨테이너 시작 중..."
+  docker-compose up --build -d
+
+  echo "모든 컨테이너가 정상적으로 실행되었습니다."
+  ```
 
 ### <a id="requirements-and-usage"></a>사전 요구사항 및 실행 방법 ▶️
 
