@@ -314,6 +314,160 @@
 
 ### <a id="requirements-and-usage"></a>사전 요구사항 및 실행 방법 ▶️
 
+> #### 사전 요구사항
+- **가상화 환경**  
+  - VirtualBox와 같은 가상화 소프트웨어를 이용하여 ubuntu VM을 준비합니다.
+
+- **Docker 및 Docker Compose**  
+  - ubuntu VM에 Docker와 Docker Compose가 설치되어 있어야 합니다.  
+  ```bash
+  docker --version
+  docker-compose --version
+  ```
+  ![alt text](images/docker-dockercompose-check.png)
+
+- **uifd/ui-for-docker**  
+  - 브라우저에서 컨테이너 상태를 시각적으로 모니터링하기 위해, `uifd/ui-for-docker` 이미지를 미리 준비하거나 실행 중이어야 합니다.  
+
+- **DB 클라이언트** 
+  - DBeaver와 같은 데이터베이스 관리 도구를 사용해 MySQL 데이터베이스를 확인할 수 있습니다.
+
+> #### 실행 방법
+1. **프로젝트 파일 준비 및 디렉토리 구성**  
+   모든 관련 파일(Dockerfile, docker-compose.yml, run.sh, backup.sh, .env, springapp.jar)과 디렉토리를 프로젝트 루트 디렉토리에 배치합니다.
+   ![alt text](images/projectfile1.png)
+
+2. **스크립트 실행 권한 부여**  
+   터미널에서 `chmod +x run.sh backup.sh` 명령어를 통해 스크립트 파일에 실행 권한을 부여합니다.
+   ```bash
+   chmod +x run.sh backup.sh
+   ```
+   ![alt text](images/projectfile2.png)
+
+3. **컨테이너 빌드 및 실행**  
+   프로젝트 루트 디렉토리에서 `./run.sh` 스크립트를 실행하여 도커 컨테이너를 빌드 및 시작합니다.
+   ```bash
+   cd dani-spring-app/
+   ./run.sh
+   ```
+   ![alt text](images/run.sh-result1-1.png)
+   ![alt text](images/run.sh-result1-2.png)
+
+   -> Docker와 Docker Compose 설치 여부를 확인하고, 프로젝트 루트의 .env 파일을 로드합니다. <br>
+   -> 그 후, 기존 컨테이너를 종료한 후, docker-compose 명령어를 통해 새로운 이미지를 빌드하고 컨테이너를 실행합니다.
+
+4. **서비스 및 컨테이너 상태 확인**  
+   - 터미널에서 run.sh 실행 이후 컨테이너, 이미지, 네트워크, 볼륨이 정상적으로 구성되었는지 확인 확인합니다.
+      ```bash
+      docker ps
+      docker ps -a
+      docker images
+      docker network ls
+      docker volume ls
+      ```
+      ![alt text](images/run.sh-result2.png)
+
+      -> Spring Boot 애플리케이션(springbootapp), MySQL(mysqldb), 그리고 ui-for-docker(vigilant_booth) 컨테이너가 모두 실행 중이며, dani-spring-app-app, mysql:8.0 이미지가 생성되었고, 전용 브리지 네트워크(dani-spring-app_spring-mysql-net)와 MySQL 데이터 볼륨(dani-spring-app_mysql_data)도 정상적으로 생성된 것을 확인할 수 있습니다.
+
+   - `docker volume inspect` 명령어로 데이터 볼륨 상태를 확인합니다.
+      ```bash
+      docker volume inspect dani-spring-app_mysql_data
+      ```
+      ![alt text](images/run.sh-result3.png)
+      
+      -> MySQL 데이터 저장용 볼륨이 정상적으로 생성되었고, 해당 볼륨은 `/var/lib/docker/volumes/dani-spring-app_mysql_data/_data` 경로에 마운트되어 있습니다.
+
+   - 위의 Mountpoint 경로로 실제 데이터 파일을 확인합니다.
+      ```bash
+      sudo ls -l /var/lib/docker/volumes/dani-spring-app_mysql_data/_data
+      ```
+      ![alt text](images/run.sh-result4.png)
+
+      ```bash
+      sudo ls -l /var/lib/docker/volumes/dani-spring-app_mysql_data/_data/dani
+      ```
+      ![alt text](images/run.sh-result5.png)
+
+   - 데이터베이스 상태 확인 (DBeaver)
+      ![alt text](images/run.sh-result6.png)
+
+   - 웹 브라우저에서 ui-for-docker를 통해 컨테이너 상태 및 네트워크와 볼륨을 확인합니다.
+   ![alt text](images/run.sh-result7-1.png)
+   ![alt text](images/run.sh-result7-2.png)
+   ![alt text](images/run.sh-result7-3.png)
+   ![alt text](images/run.sh-result7-4.png)
+
+   - 애플리케이션의 헬스 체크(`/check`)와 데이터 저장/조회(`/save`, `/one`) 기능을 테스트합니다.
+      ```bash
+      curl http://localhost:8080/check
+      ```
+      ![alt text](images/run.sh-result8-1.png)
+
+      ```bash
+      curl -X POST http://localhost:8080/save
+      ```
+      ![alt text](images/run.sh-result8-2.png)
+      ![alt text](images/run.sh-result8-3.png)
+
+      ```bash
+      curl http://localhost:8080/one
+      ```
+      ![alt text](images/run.sh-result8-4.png)
+
+5. **자동 백업 설정 및 확인**  
+   - crontab에 backup.sh 스크립트가 주기적으로 실행되도록 등록하여, MySQL 데이터베이스 백업이 자동으로 수행되도록 설정합니다.
+      ```bash
+      crontab -e
+      ```
+      ```bash
+      */5 * * * * /home/ubuntu/dani-spring-app/backup.sh >> /home/ubuntu/dani-spring-app/backup.log 2>&1
+      ```
+      -> 매 5분마다 /home/ubuntu/dani-spring-app/backup.sh 스크립트를 실행하고, 스크립트의 표준 출력과 표준 에러가 모두 backup.log 파일에 이어서 기록됩니다.
+
+   - `backup/` 디렉토리와 `backup.log` 파일에서 백업 파일 생성 및 로그 내용을 확인합니다.
+      ![alt text](images/run.sh-result9.png)
+
+   - dani_backup_2025-03-21_15-10-01.sql  확인
+      ```bash
+      cat dani_backup_2025-03-21_15-10-01.sql
+      ```
+      (주요 내용만 발췌)
+      ```sql
+      -- MySQL dump 10.13  Distrib 8.0.41, for Linux (x86_64)
+      --
+      -- Host: localhost    Database: dani
+      -- ------------------------------------------------------
+      -- Server version       8.0.41
+
+      DROP TABLE IF EXISTS `people`;
+
+      CREATE TABLE `people` (
+        `age` int NOT NULL,
+        `no` bigint NOT NULL,
+        `people_name` varchar(255) DEFAULT NULL,
+        PRIMARY KEY (`no`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+      LOCK TABLES `people` WRITE;
+
+      INSERT INTO `people` VALUES (10,1,'dani'),(20,2,'danwo'),(30,3,'dayun'),(40,4,'mina'),(10,5,'lina');
+      UNLOCK TABLES;
+
+      DROP TABLE IF EXISTS `people_seq`;
+
+      CREATE TABLE `people_seq` (
+        `next_val` bigint DEFAULT NULL
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+      LOCK TABLES `people_seq` WRITE;
+
+      INSERT INTO `people_seq` VALUES (101);
+      UNLOCK TABLES;
+
+      -- Dump completed on 2025-03-21  6:10:02
+      ```
+
+
 ---
 
 ## <a id="troubleshooting"></a>🔫 트러블슈팅
@@ -321,3 +475,5 @@
 ---
 
 ## <a id="improvements"></a>💡 고찰 및 개선점
+
+---
